@@ -9,31 +9,41 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
 </head>
 <body>
+    <!-- Hidden Debug Panel -->
+    <div id="debug-panel" class="debug-panel hidden">
+        <div class="debug-header">Debug Panel (Tap 5x to hide)</div>
+        <div class="debug-content">
+            <p><strong>Session ID:</strong> <span id="debug-session-id">-</span></p>
+            <p><strong>Webhook URL:</strong> <span id="debug-webhook-url">-</span></p>
+            <p><strong>Last Req Time:</strong> <span id="debug-req-time">-</span></p>
+            <p><strong>Last Res Time:</strong> <span id="debug-res-time">-</span></p>
+            <p><strong>Duration:</strong> <span id="debug-duration">-</span></p>
+            <p><strong>State:</strong> <span id="debug-state">-</span></p>
+        </div>
+    </div>
+
     <div class="app-container">
         <header class="header">
-            <h1>Ayanokoji</h1>
+            <h1 id="app-title">Ayanokoji</h1>
             <div class="status-indicator">
-                <span class="dot"></span>
-                <span class="status-text">Disconnected</span>
+                <span class="status-text" id="status-text">Disconnected</span>
             </div>
         </header>
 
         <main class="chat-container" id="chat-container">
             <div class="welcome-message">
                 <div class="glass-card">
-                    <p>Tap the microphone to start the conversation.</p>
+                    <p>Tap the Orb to begin the conversation.</p>
                 </div>
             </div>
         </main>
 
         <footer class="controls">
-            <div class="mic-wrapper">
-                <button id="mic-btn" class="mic-btn" aria-label="Microphone">
-                    <svg viewBox="0 0 24 24" class="mic-icon">
-                        <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
-                        <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
-                    </svg>
-                </button>
+            <div class="orb-wrapper">
+                <div id="orb" class="orb disconnected" aria-label="Orb">
+                    <div class="orb-core"></div>
+                    <div class="orb-glow"></div>
+                </div>
                 <div class="ripple-ring"></div>
                 <div class="ripple-ring delay"></div>
             </div>

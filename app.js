@@ -1,168 +1,207 @@
 document.addEventListener('DOMContentLoaded', () => {
     // UI Elements
-    const micBtn = document.getElementById('mic-btn');
-    const statusIndicator = document.querySelector('.status-indicator');
-    const statusText = document.querySelector('.status-text');
+    const orb = document.getElementById('orb');
+    const statusText = document.getElementById('status-text');
     const chatContainer = document.getElementById('chat-container');
+    const appTitle = document.getElementById('app-title');
+    const debugPanel = document.getElementById('debug-panel');
+    const debugHeader = document.querySelector('.debug-header');
 
-    // State
-    let isListening = false;
-    let isSpeaking = false;
+    // Debug Elements
+    const debugSessionId = document.getElementById('debug-session-id');
+    const debugWebhookUrl = document.getElementById('debug-webhook-url');
+    const debugReqTime = document.getElementById('debug-req-time');
+    const debugResTime = document.getElementById('debug-res-time');
+    const debugDuration = document.getElementById('debug-duration');
+    const debugState = document.getElementById('debug-state');
+
+    // State Variables
+    let currentState = 'Disconnected'; // Disconnected, Listening, Thinking, Speaking
     let recognition = null;
     let audioPlayer = new Audio();
+    let sessionId = localStorage.getItem('sessionId');
+    
+    // Debug tracking
+    let lastRequestTime = 0;
+    let clickCount = 0;
+    let clickTimer = null;
+
+    // Initialization
+    if (!sessionId) {
+        sessionId = 'sess_' + Math.random().toString(36).substring(2, 15);
+        localStorage.setItem('sessionId', sessionId);
+    }
     
     // Check Speech Recognition Support
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    
     if (!SpeechRecognition) {
         alert("Your browser does not support Speech Recognition. Please use Chrome or Safari.");
+        updateState('Error');
         statusText.textContent = "Not Supported";
         return;
     }
 
     // Initialize Speech Recognition
     recognition = new SpeechRecognition();
-    recognition.continuous = true; // Wait for the user to stop naturally
+    recognition.continuous = false; // We will restart it manually for the continuous loop
     recognition.interimResults = false;
     recognition.lang = 'en-US';
 
-    // Handle audio ending -> resume listening
+    // Handle Audio Events
     audioPlayer.addEventListener('ended', () => {
-        isSpeaking = false;
-        updateStatus();
-        if (isListening) {
+        if (currentState === 'Speaking') {
+            updateState('Listening');
             startListening();
         }
     });
 
-    // Toggle Listening
-    micBtn.addEventListener('click', () => {
-        if (isListening) {
-            stopListening();
-            isListening = false;
-        } else {
-            isListening = true;
-            // If it was speaking, stop audio to interrupt
-            if (isSpeaking) {
-                audioPlayer.pause();
-                audioPlayer.currentTime = 0;
-                isSpeaking = false;
-            }
+    audioPlayer.addEventListener('error', () => {
+        console.error("Audio playback failed.");
+        if (currentState === 'Speaking') {
+            updateState('Listening');
             startListening();
         }
-        updateStatus();
     });
 
-    function startListening() {
-        if (!recognition || isSpeaking) return;
-        try {
-            recognition.start();
-            micBtn.classList.add('active');
-            statusIndicator.classList.add('listening');
-            statusText.textContent = "Listening...";
-        } catch (e) {
-            // Already started
-            console.log(e);
-        }
-    }
-
-    function stopListening() {
-        if (!recognition) return;
-        try {
-            recognition.stop();
-            micBtn.classList.remove('active');
-            statusIndicator.classList.remove('listening');
-            statusText.textContent = "Standby";
-        } catch (e) {
-            console.log(e);
-        }
-    }
-
-    recognition.onresult = async (event) => {
-        // Get the latest transcript
-        const current = event.resultIndex;
-        const transcript = event.results[current][0].transcript.trim();
-
-        if (transcript) {
-            addMessage(transcript, 'user');
-            
-            // Temporary stop listening while fetching & playing
+    // Orb Click - Manual Start/Stop
+    orb.addEventListener('click', () => {
+        if (currentState === 'Disconnected' || currentState === 'Error') {
+            updateState('Listening');
+            startListening();
+        } else if (currentState === 'Listening') {
             stopListening();
-            
-            await handleConversation(transcript);
+            updateState('Disconnected');
+        } else if (currentState === 'Speaking') {
+            audioPlayer.pause();
+            audioPlayer.currentTime = 0;
+            updateState('Listening');
+            startListening();
+        }
+    });
+
+    // Speech Recognition Events
+    recognition.onstart = () => {
+        if (currentState !== 'Listening') {
+            updateState('Listening');
+        }
+    };
+
+    recognition.onend = () => {
+        // If it ended automatically but we should be listening, restart it
+        if (currentState === 'Listening') {
+            try {
+                recognition.start();
+            } catch (e) {}
         }
     };
 
     recognition.onerror = (event) => {
         console.error("Speech recognition error", event.error);
         if (event.error === 'not-allowed') {
-            isListening = false;
-            stopListening();
-            updateStatus();
+            updateState('Disconnected');
             alert("Microphone access is required.");
         }
-        // Auto resume on network error or no speech, if still intended to be listening
-        if (isListening && !isSpeaking && event.error !== 'not-allowed') {
-            setTimeout(startListening, 1000);
+    };
+
+    recognition.onresult = async (event) => {
+        const transcript = event.results[0][0].transcript.trim();
+        
+        if (transcript) {
+            addMessage(transcript, 'user');
+            stopListening();
+            await processWebhook(transcript);
         }
     };
 
-    recognition.onend = () => {
-        // If it ended naturally but we still want to listen and are not speaking
-        if (isListening && !isSpeaking) {
-            startListening();
-        }
-    };
-
-    async function handleConversation(text) {
-        showTypingIndicator();
+    function startListening() {
         try {
-            const response = await fetch(CONFIG.WEBHOOK_URL, {
+            recognition.start();
+        } catch (e) {}
+    }
+
+    function stopListening() {
+        try {
+            recognition.stop();
+        } catch (e) {}
+    }
+
+    async function processWebhook(transcript) {
+        updateState('Thinking');
+        
+        const timestamp = new Date().toISOString();
+        const payload = {
+            sessionId: sessionId,
+            message: transcript,
+            timestamp: timestamp
+        };
+
+        // Debug Logs
+        console.log("Webhook URL:", WEBHOOK_URL);
+        console.log("Request:", payload);
+
+        // Update Debug Panel
+        lastRequestTime = performance.now();
+        const reqDate = new Date();
+        debugReqTime.textContent = reqDate.toLocaleTimeString() + '.' + reqDate.getMilliseconds();
+        debugResTime.textContent = 'Waiting...';
+        debugDuration.textContent = '-';
+
+        try {
+            const response = await fetch(WEBHOOK_URL, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ message: text })
+                body: JSON.stringify(payload)
             });
 
-            if (!response.ok) throw new Error("Webhook failed");
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
 
             const data = await response.json();
             
-            removeTypingIndicator();
+            // Calculate timing
+            const responseTime = performance.now();
+            const resDate = new Date();
+            const duration = (responseTime - lastRequestTime).toFixed(0);
             
+            debugResTime.textContent = resDate.toLocaleTimeString() + '.' + resDate.getMilliseconds();
+            debugDuration.textContent = duration + 'ms';
+            console.log("Response:", data);
+
+            // Handle successful response
             if (data.response) {
                 addMessage(data.response, 'ai');
             }
 
             if (data.audioUrl) {
-                playAudio(data.audioUrl);
-            } else if (isListening) {
-                // Resume listening if no audio to play
+                updateState('Speaking');
+                audioPlayer.src = data.audioUrl;
+                audioPlayer.play().catch(e => {
+                    console.error("Audio playback error:", e);
+                    updateState('Listening');
+                    startListening();
+                });
+            } else {
+                updateState('Listening');
                 startListening();
             }
+
         } catch (error) {
-            console.error("Error communicating with Ayanokoji:", error);
-            removeTypingIndicator();
-            addMessage("I'm having trouble connecting right now.", 'ai');
-            if (isListening) startListening();
+            console.error("Webhook error:", error);
+            const resDate = new Date();
+            debugResTime.textContent = resDate.toLocaleTimeString() + " (ERROR)";
+            
+            addMessage("Connection to mentor unavailable.", 'error');
+            
+            // Auto resume listening even on error
+            updateState('Listening');
+            startListening();
         }
     }
 
-    function playAudio(url) {
-        isSpeaking = true;
-        updateStatus();
-        audioPlayer.src = url;
-        audioPlayer.play().catch(e => {
-            console.error("Audio playback error:", e);
-            isSpeaking = false;
-            if (isListening) startListening();
-            updateStatus();
-        });
-    }
-
     function addMessage(text, sender) {
-        // Remove welcome message if it exists
         const welcome = document.querySelector('.welcome-message');
         if (welcome) welcome.remove();
 
@@ -170,51 +209,51 @@ document.addEventListener('DOMContentLoaded', () => {
         msgDiv.className = `message ${sender}`;
         msgDiv.textContent = text;
         chatContainer.appendChild(msgDiv);
-        scrollToBottom();
-    }
-
-    let typingIndicator;
-    function showTypingIndicator() {
-        typingIndicator = document.createElement('div');
-        typingIndicator.className = 'message-typing';
-        typingIndicator.innerHTML = `
-            <div class="typing-dot"></div>
-            <div class="typing-dot"></div>
-            <div class="typing-dot"></div>
-        `;
-        chatContainer.appendChild(typingIndicator);
-        scrollToBottom();
-    }
-
-    function removeTypingIndicator() {
-        if (typingIndicator) {
-            typingIndicator.remove();
-            typingIndicator = null;
-        }
-    }
-
-    function scrollToBottom() {
         chatContainer.scrollTo({
             top: chatContainer.scrollHeight,
             behavior: 'smooth'
         });
     }
 
-    function updateStatus() {
-        if (isSpeaking) {
-            statusIndicator.classList.remove('listening');
-            statusIndicator.classList.add('speaking');
-            statusText.textContent = "Speaking";
-            micBtn.classList.remove('active');
-        } else if (isListening) {
-            statusIndicator.classList.remove('speaking');
-            statusIndicator.classList.add('listening');
-            statusText.textContent = "Listening";
-            micBtn.classList.add('active');
-        } else {
-            statusIndicator.classList.remove('speaking', 'listening');
-            statusText.textContent = "Disconnected";
-            micBtn.classList.remove('active');
+    function updateState(newState) {
+        currentState = newState;
+        statusText.textContent = newState;
+        debugState.textContent = newState;
+        
+        // Remove old state classes
+        orb.classList.remove('disconnected', 'listening', 'thinking', 'speaking', 'error');
+        
+        // Add new state class
+        orb.classList.add(newState.toLowerCase());
+    }
+
+    // Hidden Debug Panel Toggle Logic
+    appTitle.addEventListener('click', () => {
+        clickCount++;
+        if (clickCount >= 5) {
+            toggleDebugPanel();
+            clickCount = 0;
         }
+        clearTimeout(clickTimer);
+        clickTimer = setTimeout(() => {
+            clickCount = 0;
+        }, 1000); // 1 second window to click 5 times
+    });
+
+    debugHeader.addEventListener('click', () => {
+        toggleDebugPanel();
+    });
+
+    function toggleDebugPanel() {
+        debugPanel.classList.toggle('hidden');
+        if (!debugPanel.classList.contains('hidden')) {
+            updateDebugStaticValues();
+        }
+    }
+
+    function updateDebugStaticValues() {
+        debugSessionId.textContent = sessionId;
+        debugWebhookUrl.textContent = WEBHOOK_URL;
+        debugState.textContent = currentState;
     }
 });

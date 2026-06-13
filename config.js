@@ -1,3 +1,1 @@
-const CONFIG = {
-    WEBHOOK_URL: "https://YOUR-N8N-DOMAIN/webhook/ayanokoji"
-};
+const WEBHOOK_URL = "https://outsider-gatherer-outmatch.ngrok-free.dev/webhook-test/ayanokoji-fast-intake";
