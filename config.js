@@ -1,1 +1,1 @@
-const WEBHOOK_URL = "https://outsider-gatherer-outmatch.ngrok-free.dev/webhook-test/ayanokoji-fast-intake";
+const WEBHOOK_URL = "http://localhost:5678/webhook/ayanokoji-chat";
