@@ -205,9 +205,10 @@ document.addEventListener('DOMContentLoaded', () => {
             debugDuration.textContent = duration + 'ms';
             console.log("Response:", data);
 
-            // Handle successful response
-            if (data.response) {
-                addMessage(data.response, 'ai');
+            // Handle successful response - support both 'response' and 'output' field names
+            const aiText = data.response || data.output || data.text || data.message;
+            if (aiText) {
+                addMessage(aiText, 'ai');
             }
 
             if (data.audioUrl) {
