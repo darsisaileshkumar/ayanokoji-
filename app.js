@@ -20,6 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let recognition = null;
     let audioPlayer = new Audio();
     let sessionId = localStorage.getItem('sessionId');
+    let currentUtterance = null;
     
     // Debug tracking
     let lastRequestTime = 0;
@@ -205,9 +206,9 @@ document.addEventListener('DOMContentLoaded', () => {
             debugDuration.textContent = duration + 'ms';
             console.log("Response:", data);
 
-            // Voice-only mode: play audio from Sarvam TTS, skip text display
+            // Priority 1: External audio URL (Sarvam TTS etc.)
             if (data.audioUrl) {
-                console.log("Playing audio from Sarvam TTS...");
+                console.log("Playing external audio...");
                 updateState('Speaking');
                 audioPlayer.src = data.audioUrl;
                 audioPlayer.play().catch(e => {
@@ -216,15 +217,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     startListening();
                 });
             } else {
-                // Fallback: if no audio, show text if available
+                // Priority 2: Browser TTS - speak the AI text directly
                 const aiText = data.response || data.output || data.text || data.message;
                 if (aiText) {
-                    addMessage(aiText, 'ai');
+                    console.log("Speaking via browser TTS:", aiText);
+                    speakText(aiText);
                 } else {
-                    console.warn("No audioUrl in response. Check n8n Code node output:", data);
+                    console.warn("No text or audio in response:", data);
+                    updateState('Listening');
+                    startListening();
                 }
-                updateState('Listening');
-                startListening();
             }
 
         } catch (error) {
@@ -238,6 +240,42 @@ document.addEventListener('DOMContentLoaded', () => {
             updateState('Listening');
             startListening();
         }
+    }
+
+    // Browser TTS using Web Speech Synthesis API
+    function speakText(text) {
+        // Cancel any ongoing speech
+        window.speechSynthesis.cancel();
+
+        updateState('Speaking');
+
+        currentUtterance = new SpeechSynthesisUtterance(text);
+        currentUtterance.lang = 'en-US';
+        currentUtterance.rate = 0.95;  // Slightly slower = more natural
+        currentUtterance.pitch = 0.85; // Slightly lower = more Ayanokoji-like
+        currentUtterance.volume = 1.0;
+
+        // Pick the best available voice
+        const voices = window.speechSynthesis.getVoices();
+        const preferred = voices.find(v =>
+            v.name.includes('Google') || v.name.includes('Daniel') ||
+            v.name.includes('Alex') || v.name.includes('Samantha')
+        );
+        if (preferred) currentUtterance.voice = preferred;
+
+        currentUtterance.onend = () => {
+            console.log("Browser TTS finished.");
+            updateState('Listening');
+            startListening();
+        };
+
+        currentUtterance.onerror = (e) => {
+            console.error("TTS error:", e);
+            updateState('Listening');
+            startListening();
+        };
+
+        window.speechSynthesis.speak(currentUtterance);
     }
 
     function addMessage(text, sender) {
