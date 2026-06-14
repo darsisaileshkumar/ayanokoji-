@@ -89,14 +89,19 @@ document.addEventListener('DOMContentLoaded', () => {
     recognition.onend = () => {
         // If it ended automatically but we should be listening, restart it
         if (currentState === 'Listening') {
-            try {
-                recognition.start();
-            } catch (e) {}
+            setTimeout(() => {
+                try {
+                    if (currentState === 'Listening') recognition.start();
+                } catch (e) {}
+            }, 250);
         }
     };
 
     recognition.onerror = (event) => {
-        console.error("Speech recognition error", event.error);
+        // Hide the harmless 'no-speech' timeout from flooding the console
+        if (event.error !== 'no-speech') {
+            console.error("Speech recognition error:", event.error);
+        }
         if (event.error === 'not-allowed') {
             updateState('Disconnected');
             alert("Microphone access is required.");
