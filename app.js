@@ -205,13 +205,9 @@ document.addEventListener('DOMContentLoaded', () => {
             debugDuration.textContent = duration + 'ms';
             console.log("Response:", data);
 
-            // Handle successful response - support both 'response' and 'output' field names
-            const aiText = data.response || data.output || data.text || data.message;
-            if (aiText) {
-                addMessage(aiText, 'ai');
-            }
-
+            // Voice-only mode: play audio from Sarvam TTS, skip text display
             if (data.audioUrl) {
+                console.log("Playing audio from Sarvam TTS...");
                 updateState('Speaking');
                 audioPlayer.src = data.audioUrl;
                 audioPlayer.play().catch(e => {
@@ -220,6 +216,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     startListening();
                 });
             } else {
+                // Fallback: if no audio, show text if available
+                const aiText = data.response || data.output || data.text || data.message;
+                if (aiText) {
+                    addMessage(aiText, 'ai');
+                } else {
+                    console.warn("No audioUrl in response. Check n8n Code node output:", data);
+                }
                 updateState('Listening');
                 startListening();
             }
