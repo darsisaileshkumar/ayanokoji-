@@ -174,7 +174,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
 
-            const data = await response.json();
+            // Safely parse - n8n may return empty body if "Respond to Webhook" node is missing
+            const rawText = await response.text();
+            if (!rawText || rawText.trim() === '') {
+                console.warn("n8n returned an empty response. Add a 'Respond to Webhook' node to your workflow.");
+                addMessage("Received your message, but n8n returned no response. Please add a 'Respond to Webhook' node.", 'error');
+                updateState('Listening');
+                startListening();
+                return;
+            }
+
+            let data;
+            try {
+                data = JSON.parse(rawText);
+            } catch (e) {
+                console.warn("n8n response was not valid JSON:", rawText);
+                // Display raw text if it's not JSON
+                addMessage(rawText, 'ai');
+                updateState('Listening');
+                startListening();
+                return;
+            }
             
             // Calculate timing
             const responseTime = performance.now();
