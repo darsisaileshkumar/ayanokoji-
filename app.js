@@ -86,7 +86,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    recognition.onaudiostart = () => console.log("Audio capturing started");
+    recognition.onspeechstart = () => console.log("Speech detected");
+    recognition.onspeechend = () => console.log("Speech stopped");
+
     recognition.onend = () => {
+        console.log("Recognition ended naturally.");
         // If it ended automatically but we should be listening, restart it
         if (currentState === 'Listening') {
             setTimeout(() => {
@@ -109,12 +114,16 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     recognition.onresult = async (event) => {
+        console.log("Speech result received!", event.results);
         const transcript = event.results[0][0].transcript.trim();
         
         if (transcript) {
+            console.log("Transcript:", transcript);
             addMessage(transcript, 'user');
             stopListening();
             await processWebhook(transcript);
+        } else {
+            console.log("Transcript was empty.");
         }
     };
 
